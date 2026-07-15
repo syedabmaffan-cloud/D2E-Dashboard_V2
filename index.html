@@ -1444,13 +1444,274 @@ function safetyStockRobotBreakdownHTML(r){
   `;
 }
 
+// Real PO spend by material, per SBU, FY26-27 to date (POs from 01-Jul-2025)
+// Filtered to DIRECT RM/PM only: excludes items with a populated strCostElementName
+// (that field is blank for direct materials, populated for overhead/service categories
+// like MOH/AOH/MKOH in the source data) AND manually excludes non-material capex/service
+// items that still had a blank cost element (Interior Design, vehicle body fabrication,
+// installation & commissioning projects, branding/marketing, general service, fuel/utility).
+const MATERIALS_BY_SBU = {
+  ACCL: [
+    {name:'Empty Cement Bag-PCC(Stitch)', spend:71850900, poCount:3},
+    {name:'Empty Cement Bag-PCC CEM-II/A-M', spend:45102720, poCount:2},
+    {name:'Grinding Aid (Cement Additives)', spend:3580000, poCount:1},
+    {name:'Empty Cement Bag-OPC(Pasting)', spend:1691352, poCount:1},
+    {name:'Lime Stone 3/4"', spend:829000, poCount:2},
+  ],
+  AEL: [
+    {name:'Chinigura Premium New 25 kg (T)', spend:138600000, poCount:1},
+    {name:'Chinigura Premium 1 kg (T)', spend:105000000, poCount:1},
+    {name:'Miniket 7 kg (Tender) (T)', spend:83959092, poCount:1},
+    {name:'Miniket Paddy (Tender)', spend:71555970, poCount:70},
+    {name:'Food Godown 30 kg (T)', spend:66651900, poCount:3},
+    {name:'Khud 1 Chinigura 1 kg (T)', spend:39000000, poCount:2},
+    {name:'Khud 1 Katari Najir 1 kg (T)', spend:37240000, poCount:3},
+    {name:'Premium katari Ghee Bhog 25 kg (T)', spend:32312000, poCount:1},
+    {name:'Miniket 25 kg (T)', spend:32000000, poCount:1},
+    {name:'Katari Najir New 25 kg (T)', spend:31209400, poCount:1},
+  ],
+  AIL: [
+    {name:'Quartzite Powder', spend:5180000, poCount:3},
+    {name:'Ferro Manganese', spend:3900001, poCount:1},
+    {name:'MS Plate-(Forma)', spend:1515000, poCount:1},
+    {name:'Tundish Board-(Square Casting, 80 MT)', spend:1200000, poCount:1},
+    {name:'Boric Acid Powder', spend:1180000, poCount:1},
+    {name:'PNS', spend:838000, poCount:2},
+    {name:'Shredded Scrap', spend:797000, poCount:2},
+  ],
+  AAFL: [
+    {name:'Soya Bean Meal (Argentina)', spend:155000000, poCount:1},
+    {name:'Maize (Local)', spend:15250000, poCount:1},
+    {name:'Wheat Flour', spend:15200000, poCount:2},
+    {name:'Rice Polish Boiled - A', spend:3650000, poCount:1},
+    {name:'PPW Bag (LM) - Akij Feed - Layer Layer - 1 Mash', spend:2349996, poCount:1},
+    {name:'Lysine 40% (Rumen protected)', spend:1785000, poCount:1},
+  ],
+  ABSL: [
+    {name:'Bitumen (Grade-60/70)', spend:25506000, poCount:1},
+    {name:'Stone Dust (0-5mm) Local', spend:3400000, poCount:1},
+  ],
+  ARMCL: [
+    {name:'Cement Bulk PCC (RM)', spend:51625012, poCount:4},
+    {name:'Crushed Stone 10-20 mm (Gabro)', spend:11000000, poCount:1},
+    {name:'Cement Bulk OPC (RM)', spend:9000003, poCount:2},
+    {name:'Coarse Sand FM 2.2-3.0', spend:4893247, poCount:4},
+    {name:'MS Rod 20 mm, 72 Grade', spend:2685000, poCount:1},
+    {name:'Pakur Stone 5-10 mm(RM)', spend:1335000, poCount:1},
+  ],
+  ALEL: [
+    {name:'SFG For Enovar 10-13 Way Metal Distribution Box', spend:5543690, poCount:1},
+    {name:'SFG For Enovar 7-9 Way Metal Distribution Box', spend:5071730, poCount:1},
+    {name:'SFG For Enovar 4-6 Way Metal Distribution Box', spend:4552850, poCount:1},
+    {name:'Fan Dimmer Circuit For Piano', spend:2515500, poCount:1},
+    {name:'AC/DC LED 18W Bulb (single packet)', spend:1922800, poCount:1},
+    {name:'AC Bracket Tube 80W (single packet)', spend:654192, poCount:1},
+  ],
+};
+// SLICE 2: Consumption-wise — real "Issue For Shop Floor" ledger transactions, Jul-26 only
+// (the only month with reliable full-month issue data). Unlike the PO-spend slice, this
+// captures Cement Clinker/Gypsum/Slag correctly since it's not procurement-dependent —
+// consumption is recorded locally regardless of how the material was purchased.
+// Finished-goods issues (e.g. "Akij Cement (Bulk)-PCC/OPC" — issued to dispatch, not
+// production) are explicitly excluded per instruction. Units are physical quantity
+// (MT or Pieces depending on material) — mixed units, so shown as a ranked list, not a
+// dollar-based Pareto bar.
+const CONSUMPTION_BY_SBU = {
+  ACCL: [
+    {name:'Empty Cement Bag-PCC(Stitch)', qty:527604, unit:'Pc', txnCount:54},
+    {name:'Empty Cement Bag-PCC CEM-II/A-M', qty:441250, unit:'Pc', txnCount:42},
+    {name:'Cement Clinker', qty:24826, unit:'MT', txnCount:21},
+    {name:'Empty Cement Bag-OPC(Pasting)', qty:17655, unit:'Pc', txnCount:16},
+    {name:'Slag Blast Furnace', qty:12092, unit:'MT', txnCount:19},
+    {name:'Lime Stone 3/4"', qty:9891, unit:'MT', txnCount:21},
+    {name:'Gypsum', qty:1978, unit:'MT', txnCount:21},
+    {name:'Empty Cement Bag-PCC (Pasting MES)', qty:1800, unit:'Pc', txnCount:5},
+    {name:'Empty Cement Bag-OPC (Pasting MES)', qty:850, unit:'Pc', txnCount:3},
+    {name:'Grinding Aid (Cement Additives)', qty:19, unit:'MT', txnCount:21},
+  ],
+  AEL: [
+    {name:'Bulk Atta-Import (Protein-11.5)', qty:2492318, unit:'Kg', txnCount:77},
+    {name:'BR-34 Paddy', qty:865000, unit:'Kg', txnCount:13},
+    {name:'Miniket Paddy (New)', qty:846257, unit:'Kg', txnCount:8},
+    {name:'Miniket Paddy', qty:631296, unit:'Kg', txnCount:6},
+    {name:'Bulk Maida - Local', qty:527097, unit:'Kg', txnCount:26},
+    {name:'Miniket Paddy (Tender)', qty:512222, unit:'Kg', txnCount:3},
+    {name:'Shorna-5 Paddy', qty:496125, unit:'Kg', txnCount:13},
+    {name:'Refined Vacuum Salt 1 kg (RM)', qty:350000, unit:'Kg', txnCount:18},
+  ],
+  AIL: [
+    {name:'MS Billet', qty:3446, unit:'MT', txnCount:52},
+    {name:'PNS', qty:2837, unit:'MT', txnCount:16},
+    {name:'Shredded Scrap', qty:1800, unit:'MT', txnCount:16},
+    {name:'HMS', qty:1746, unit:'MT', txnCount:16},
+    {name:'Sponge Iron', qty:832, unit:'MT', txnCount:14},
+    {name:'100 Super', qty:404, unit:'MT', txnCount:10},
+    {name:'A grade', qty:396, unit:'MT', txnCount:14},
+    {name:'Rolling Scrap', qty:235, unit:'MT', txnCount:14},
+  ],
+  AAFL: [
+    {name:'Maize (Local)', qty:2056140, unit:'Kg', txnCount:238},
+    {name:'Soya Bean Meal (Brazil)', qty:1294839, unit:'Kg', txnCount:300},
+    {name:'Maize (Import)', qty:540474, unit:'Kg', txnCount:153},
+    {name:'DDGS - Corn', qty:446482, unit:'Kg', txnCount:229},
+    {name:'DORB', qty:423545, unit:'Kg', txnCount:228},
+    {name:'Rape Seed Oil Cake (Local)', qty:329269, unit:'Kg', txnCount:183},
+    {name:'Wheat Flour', qty:185309, unit:'Kg', txnCount:139},
+    {name:'Lime Stone Granular(2/3mm)', qty:121511, unit:'Kg', txnCount:53},
+  ],
+  ABSL: [
+    {name:'Coarse Sand FM 2.2-3.0', qty:12280, unit:'MT', txnCount:9},
+    {name:'Stone Dust (0-5mm) Local', qty:2098, unit:'MT', txnCount:9},
+    {name:'Limestone 10-20 mm', qty:663, unit:'MT', txnCount:9},
+    {name:'Limestone 05-10 mm', qty:262, unit:'MT', txnCount:5},
+    {name:'Stone dust (Moddhapara)', qty:85, unit:'MT', txnCount:5},
+    {name:'Bitumen (Grade 60-70)', qty:84, unit:'Drum', txnCount:14},
+  ],
+  ARMCL: [
+    {name:'Sylhet Sand (RM)', qty:93893, unit:'MT', txnCount:665},
+    {name:'Coarse Sand FM 2.2-3.0', qty:86941, unit:'MT', txnCount:686},
+    {name:'Admixer (Chemical)', qty:25745, unit:'Kg', txnCount:1314},
+    {name:'Limestone 10-20 mm', qty:5721, unit:'MT', txnCount:1297},
+    {name:'Cement Bulk PCC (RM)', qty:3071, unit:'MT', txnCount:1329},
+    {name:'Pakur Stone 10-20 mm(RM)', qty:1485, unit:'MT', txnCount:653},
+    {name:'Pakur Stone 5-10 mm(RM)', qty:808, unit:'MT', txnCount:672},
+  ],
+  ALEL: [
+    {name:'Nut For Piano Installation Screw', qty:170496, unit:'Pc', txnCount:24},
+    {name:'Rivet For Enovar MCB 1P', qty:168120, unit:'Pc', txnCount:17},
+    {name:'Terminal Screw For Piano', qty:143136, unit:'Pc', txnCount:22},
+    {name:'Wire Frame For Enovar MCB', qty:101424, unit:'Pc', txnCount:37},
+    {name:'Decorating Frame For Piano (SFG)', qty:85248, unit:'Pc', txnCount:24},
+  ],
+};
+let selectedProcSlice = 'po'; // 'po' or 'consumption'
+function renderConsumptionSection(){
+  const items = CONSUMPTION_BY_SBU[selectedProcSbu] || [];
+  return `
+    <div style="background:var(--card); border:1px solid rgba(47,212,128,0.4); border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:var(--text-2); line-height:1.5;">
+      <strong style="color:var(--green);">✓ This slice fixes the Clinker gap.</strong> Sourced from real "Issue For Shop Floor" ledger transactions — what actually left the warehouse into production — not purchase orders. Since consumption is recorded locally regardless of how a material was bought, imported materials like Cement Clinker show up correctly here. Finished-goods issues (e.g. bulk cement issued to dispatch, not production) are excluded. Window: Jul-26 only — the only month with reliable full-month data.
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+      ${Object.keys(MATERIALS_BY_SBU).map(sbu=>`
+        <button type="button" data-proc-sbu="${sbu}" class="chip" style="padding:6px 14px; border-radius:16px; border:1px solid var(--border); font-size:12px; font-weight:600; cursor:pointer; background:${sbu===selectedProcSbu?'var(--teal)':'var(--grey-bg)'}; color:${sbu===selectedProcSbu?'#fff':'var(--text-2)'};">${sbu}</button>
+      `).join('')}
+    </div>
+    <div style="font-size:12px; color:var(--text-3); margin-bottom:10px;">Direct materials issued to shop floor, ${selectedProcSbu}, Jul-26. Mixed units (MT/Kg/Pieces) — ranked list, not a spend-based bar, since quantities aren't directly comparable across materials.</div>
+    ${items.length===0 ? `<div style="font-size:12px; color:var(--text-3); padding:12px; text-align:center; background:var(--grey-bg); border-radius:8px;">No shop-floor issue records found for ${selectedProcSbu} in Jul-26.</div>` : `
+    <div style="overflow-x:auto;"><table class="mape-table">
+      <thead><tr><th>Material</th><th>Qty Issued</th><th>Unit</th><th>Transactions</th></tr></thead>
+      <tbody>
+        ${items.map(it=>`
+          <tr>
+            <td>${it.name}</td>
+            <td class="mv" style="font-weight:700;">${it.qty.toLocaleString()}</td>
+            <td class="mv">${it.unit}</td>
+            <td class="mv" style="color:var(--text-3);">${it.txnCount}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>`}
+  `;
+}
+// Real monthly breakdown (Apr-Jul 2026 — the only months with enough PO volume for
+// reliable per-material ranking; 78% of all PO records fall in Jul-26 alone, earlier
+// months back to Feb-24 exist but are too thin (1-16 POs/month) to rank reliably).
+const MATERIALS_BY_SBU_MONTH = {
+  ACCL: {
+    'Apr-26': [],
+    'May-26': [{name:'Grinding Aid (Cement Additives)', spend:3580000, poCount:1},{name:'Lime Stone 3/4"', spend:275000, poCount:1}],
+    'Jun-26': [{name:'Empty Cement Bag-PCC CEM-II/A-M', spend:36645960, poCount:2},{name:'Empty Cement Bag-PCC(Stitch)', spend:35927100, poCount:2},{name:'Empty Cement Bag-OPC(Pasting)', spend:1691352, poCount:1},{name:'Lime Stone 3/4"', spend:554000, poCount:1}],
+    'Jul-26': [{name:'Empty Cement Bag-PCC(Stitch)', spend:35923800, poCount:1},{name:'Empty Cement Bag-PCC CEM-II/A-M', spend:8456760, poCount:1}],
+  },
+  AEL: {
+    'Apr-26': [],
+    'May-26': [{name:'Chinigura Premium New 25 kg (T)', spend:138600000, poCount:1},{name:'Katari Najir New 25 kg (T)', spend:48209400, poCount:2},{name:'Miniket 25 kg (T)', spend:32000000, poCount:1},{name:'Paijam Light Cream 25 kg (T)', spend:24000000, poCount:1},{name:'Essential Atop Rice 25 kg (T)', spend:13000000, poCount:1}],
+    'Jun-26': [{name:'Premium katari Ghee Bhog 25 kg (T)', spend:32312000, poCount:1},{name:'Rice Bran Atop 1 kg (T)', spend:10400000, poCount:1},{name:'Miniket 5 kg (T)', spend:8700000, poCount:1},{name:'Foil 1 kg Akij Essential Atta (packaging)', spend:6003000, poCount:1}],
+    'Jul-26': [{name:'Chinigura Premium 1 kg (T)', spend:105000000, poCount:1},{name:'Miniket 7 kg (Tender) (T)', spend:83959092, poCount:1},{name:'Paijam Light Cream 25 kg (T)', spend:30625000, poCount:1},{name:'Rice Bran Boiled 1 kg (T)', spend:18000000, poCount:1}],
+  },
+  AIL: {
+    'Apr-26': [{name:'Shredded Scrap', spend:418000, poCount:1},{name:'PNS', spend:418000, poCount:1},{name:'HMS', spend:388000, poCount:1}],
+    'May-26': [],
+    'Jun-26': [{name:'Quartzite Powder', spend:740000, poCount:1},{name:'PNS', spend:420000, poCount:1}],
+    'Jul-26': [{name:'Quartzite Powder', spend:4440000, poCount:2},{name:'Ferro Manganese', spend:3900001, poCount:1},{name:'MS Plate-(Forma)', spend:1515000, poCount:1},{name:'Tundish Board-(Square Casting, 80 MT)', spend:1200000, poCount:1},{name:'Boric Acid Powder', spend:1180000, poCount:1},{name:'Shredded Scrap', spend:379000, poCount:1}],
+  },
+  AAFL: {
+    'Apr-26': [],
+    'May-26': [],
+    'Jun-26': [{name:'Maize (Local)', spend:15250000, poCount:1},{name:'Wheat Flour', spend:15200000, poCount:2},{name:'Lysine 40% (Rumen protected)', spend:1785000, poCount:1}],
+    'Jul-26': [{name:'Rice Polish Boiled - A', spend:3650000, poCount:1},{name:'Soya Bean Oil', spend:2058000, poCount:2},{name:'Squid Liver Meal', spend:1750000, poCount:2}],
+  },
+  ABSL: {
+    'Apr-26': [], 'May-26': [],
+    'Jun-26': [{name:'Stone Dust (0-5mm) Local', spend:3400000, poCount:1}],
+    'Jul-26': [{name:'Bitumen (Grade-60/70)', spend:25506000, poCount:1}],
+  },
+  ARMCL: {
+    'Apr-26': [{name:'Cement Bulk PCC (RM)', spend:14949985, poCount:2}],
+    'May-26': [{name:'Cement Bulk PCC (RM)', spend:24450034, poCount:1}],
+    'Jun-26': [{name:'Cement Bulk PCC (RM)', spend:12224993, poCount:1},{name:'Cement Bulk OPC (RM)', spend:9000003, poCount:2}],
+    'Jul-26': [{name:'Crushed Stone 10-20 mm (Gabro)', spend:11000000, poCount:1},{name:'Coarse Sand FM 2.2-3.0', spend:4893247, poCount:4},{name:'MS Rod 20 mm, 72 Grade', spend:2685000, poCount:1},{name:'Pakur Stone 5-10 mm(RM)', spend:1335000, poCount:1}],
+  },
+  ALEL: {
+    'Apr-26': [{name:'SFG For Enovar Exhaust Fan-8 Inch', spend:277547, poCount:1},{name:'SFG For Enovar Cherry Series (common dozen packet)', spend:184206, poCount:1},{name:'SFG For Enovar 10-13 Way Metal Distribution Box', spend:80500, poCount:1}],
+    'May-26': [{name:'SFG For Enovar Decorative Celling Rose', spend:488750, poCount:1},{name:'SFG For Enovar Decorative Combo Holder', spend:488750, poCount:1},{name:'SFG For Enovar Decorative Holder/Celling Rose (master carton)', spend:273700, poCount:1}],
+    'Jun-26': [{name:'SFG For Enovar AC/DC LED 18W Bulb', spend:1922800, poCount:1},{name:'SFG For Enovar AC/DC LED 12W Bulb', spend:598000, poCount:1},{name:'SFG For Enovar AC/DC LED 18W Bulb (master carton)', spend:502550, poCount:1}],
+    'Jul-26': [{name:'Fan Dimmer Circuit For Piano', spend:2515500, poCount:1},{name:'SFG For Enovar AC Bracket Tube 40W', spend:507150, poCount:1},{name:'Housing For Enovar PL Panel Surface & Conceal Round 12W', spend:328900, poCount:1}],
+  },
+};
+// Core imported/large-scale RM with ZERO local PO records — confirmed by direct query,
+// not an oversight. These are the SBU's actual highest-value materials by physical
+// consumption, but this table structurally cannot show them because procurement happens
+// via import LC/vessel booking or inter-company transfer, never a local PO.
+const IMPORTED_RM_GAP = {
+  ACCL: 'Cement Clinker (ACCL\'s single largest RM by consumption — real closing stock 58,062.57 MT confirmed via wms ledger) — zero local POs. Also Gypsum and Slag Blast Furnace.',
+  AIL: 'MS Billet and Sponge Iron (AIL\'s core steel inputs) — zero local POs found in this table at all.',
+};
+let selectedProcSbu = 'AEL';
+let selectedProcMonth = 'ALL';
+function renderMaterialParetoSection(){
+  const monthData = selectedProcMonth==='ALL' ? MATERIALS_BY_SBU[selectedProcSbu] : (MATERIALS_BY_SBU_MONTH[selectedProcSbu]||{})[selectedProcMonth];
+  const mats = monthData || [];
+  const total = mats.reduce((a,m)=>a+m.spend,0);
+  let cum = 0;
+  const rows = mats.map(m=>{ cum+=m.spend; return {...m, pct:m.spend/total*100, cumPct:cum/total*100}; });
+  const fmtM = n => (n/1e6).toFixed(1)+'M';
+  const gapNote = IMPORTED_RM_GAP[selectedProcSbu];
+  return `
+    ${gapNote ? `
+    <div style="background:var(--card); border:1px solid rgba(255,90,90,0.4); border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:var(--text-2); line-height:1.5;">
+      <strong style="color:var(--red);">⚠ Missing from this table, on purpose — not an error:</strong> ${gapNote} This view is PO-spend based, and these materials simply have no local purchase order to count. Treat this Pareto as "locally-procured materials only," not "all materials by COGS impact."
+    </div>` : ''}
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+      ${Object.keys(MATERIALS_BY_SBU).map(sbu=>`
+        <button type="button" data-proc-sbu="${sbu}" class="chip" style="padding:6px 14px; border-radius:16px; border:1px solid var(--border); font-size:12px; font-weight:600; cursor:pointer; background:${sbu===selectedProcSbu?'var(--teal)':'var(--grey-bg)'}; color:${sbu===selectedProcSbu?'#fff':'var(--text-2)'};">${sbu}</button>
+      `).join('')}
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+      ${['ALL','Apr-26','May-26','Jun-26','Jul-26'].map(mo=>`
+        <button type="button" data-proc-month="${mo}" class="chip" style="padding:5px 12px; border-radius:14px; border:1px solid var(--border); font-size:11px; font-weight:600; cursor:pointer; background:${mo===selectedProcMonth?'var(--gold,#c99a3d)':'var(--grey-bg)'}; color:${mo===selectedProcMonth?'#fff':'var(--text-3)'};">${mo==='ALL'?'FY to date':mo}</button>
+      `).join('')}
+    </div>
+    <div style="font-size:12px; color:var(--text-3); margin-bottom:10px;">Direct Raw Materials &amp; Packaging Materials only for ${selectedProcSbu}, ${selectedProcMonth==='ALL'?'FY26-27 to date':selectedProcMonth} — Branding &amp; Marketing, Interior Design, General Service, vehicle fabrication, capex installation projects, and fuel/utility purchases excluded. Single-PO items are one-off large batch buys, not a repeated pattern — see counts.</div>
+    ${rows.length===0 ? `<div style="font-size:12px; color:var(--text-3); padding:12px; text-align:center; background:var(--grey-bg); border-radius:8px;">No direct RM/PM purchase orders recorded for ${selectedProcSbu} in ${selectedProcMonth} — genuinely no data for this period, not a display error.</div>` : `
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${rows.map(r=>`
+        <div style="display:grid; grid-template-columns:1fr 90px 55px 70px; gap:10px; align-items:center; font-size:12px;">
+          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.name}">${r.name}</div>
+          <div style="background:var(--grey-bg); border-radius:6px; overflow:hidden; height:16px; position:relative;">
+            <div style="background:${r.cumPct<=80?'var(--teal)':'var(--border)'}; height:100%; width:${r.pct}%;"></div>
+          </div>
+          <div class="mv" style="text-align:right;">${fmtM(r.spend)}</div>
+          <div class="mv" style="text-align:right; color:var(--text-3);">${r.poCount} PO${r.poCount>1?'s':''}</div>
+        </div>
+      `).join('')}
+    </div>`}
+  `;
+}
+
 function procurementIntelHTML(p){
   if(!p) return '';
   const rows = p.rows;
-  const totalFyCogs = rows.reduce((a,r)=>a+r.fyCogs,0);
-  const sortedByFyCogs = [...rows].sort((a,b)=>b.fyCogs-a.fyCogs);
-  let cum = 0;
-  const paretoRows = sortedByFyCogs.map(r=>{ cum += r.fyCogs; return {...r, pct: r.fyCogs/totalFyCogs*100, cumPct: cum/totalFyCogs*100}; });
   const sortedByRate = [...rows].sort((a,b)=>b.fyPct-a.fyPct);
   const maxRate = Math.max(...rows.map(r=>r.fyPct));
   const fmt0 = n => Math.round(n).toLocaleString();
@@ -1481,22 +1742,17 @@ function procurementIntelHTML(p){
         </tbody>
       </table></div>
 
-      <div style="font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em; margin:16px 0 6px;">2) SBU-wise Pareto of COGS Value (FY25-26)</div>
-      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
-        ${paretoRows.map(r=>`
-          <div style="display:grid; grid-template-columns:60px 1fr 90px 70px; gap:10px; align-items:center; font-size:12px;">
-            <div style="font-weight:600;">${r.sbu}</div>
-            <div style="background:var(--grey-bg); border-radius:6px; overflow:hidden; height:18px; position:relative;">
-              <div style="background:${r.cumPct<=80?'var(--teal)':'var(--border)'}; height:100%; width:${r.pct}%;"></div>
-            </div>
-            <div class="mv" style="text-align:right;">${fmtM(r.fyCogs)}</div>
-            <div class="mv" style="text-align:right; color:var(--text-3);">cum ${r.cumPct.toFixed(0)}%</div>
-          </div>
-        `).join('')}
+      <div style="font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em; margin:16px 0 6px;">2) Direct RM &amp; PM Materials — by SBU, two slices</div>
+      <div style="font-size:12px; color:var(--text-3); margin-bottom:10px; line-height:1.5;">Click an SBU to see that SBU's own materials (not a ranking of SBUs against each other). Two independent slices — pick one:</div>
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button type="button" data-proc-slice="po" style="flex:1; padding:10px 14px; border-radius:8px; border:1px solid var(--border); font-size:12.5px; font-weight:700; cursor:pointer; background:${selectedProcSlice==='po'?'var(--navy,#1B3A5C)':'var(--grey-bg)'}; color:${selectedProcSlice==='po'?'#fff':'var(--text-2)'};">
+          💰 PO-wise (Purchase Spend)
+        </button>
+        <button type="button" data-proc-slice="consumption" style="flex:1; padding:10px 14px; border-radius:8px; border:1px solid var(--border); font-size:12.5px; font-weight:700; cursor:pointer; background:${selectedProcSlice==='consumption'?'var(--navy,#1B3A5C)':'var(--grey-bg)'}; color:${selectedProcSlice==='consumption'?'#fff':'var(--text-2)'};">
+          🏭 Consumption-wise (Issued to Shop Floor)
+        </button>
       </div>
-      <div style="font-size:12px; color:var(--text-2); background:var(--grey-bg); border-radius:8px; padding:10px 12px; margin-bottom:16px; line-height:1.5;">
-        <strong style="color:var(--text-1);">AEL alone is ${paretoRows[0].pct.toFixed(1)}% of total group COGS value</strong> (৳${fmtM(paretoRows[0].fyCogs)} of ৳${fmtM(totalFyCogs)}) — more than ACCL, AIL, and AAFL combined. ACCL and AIL are close seconds at ~16% each.
-      </div>
+      <div id="material-pareto-container">${selectedProcSlice==='po' ? renderMaterialParetoSection() : renderConsumptionSection()}</div>
 
       <div style="font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:0.05em; margin:16px 0 6px;">3) SBU-wise COGS Rate — Which SBU Impacts Group Margin Most (FY25-26)</div>
       <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
@@ -1511,7 +1767,7 @@ function procurementIntelHTML(p){
         `).join('')}
       </div>
       <div style="font-size:12px; color:var(--text-2); background:var(--grey-bg); border-radius:8px; padding:10px 12px; margin-bottom:6px; line-height:1.5;">
-        <strong style="color:var(--red);">${sortedByRate[0].sbu} has the worst COGS rate at ${sortedByRate[0].fyPct.toFixed(1)}% of revenue</strong> — and per section 2 above, it's also the single largest $ contributor to group COGS. That combination makes ${sortedByRate[0].sbu} the highest-leverage SBU for group-level margin improvement, on both dimensions simultaneously. ${sortedByRate[sortedByRate.length-1].sbu} has the healthiest rate at ${sortedByRate[sortedByRate.length-1].fyPct.toFixed(1)}%.
+        <strong style="color:var(--red);">${sortedByRate[0].sbu} has the worst COGS rate at ${sortedByRate[0].fyPct.toFixed(1)}% of revenue</strong> on a full-year basis — and at ৳${fmtM(sortedByRate[0].fyCogs)}, it's also the single largest $ contributor to group COGS (${(sortedByRate[0].fyCogs/rows.reduce((a,r)=>a+r.fyCogs,0)*100).toFixed(1)}% of the group total). That combination makes ${sortedByRate[0].sbu} the highest-leverage SBU for group-level margin improvement, on both dimensions simultaneously. ${sortedByRate[sortedByRate.length-1].sbu} has the healthiest rate at ${sortedByRate[sortedByRate.length-1].fyPct.toFixed(1)}%.
       </div>
     </details>
   `;
@@ -2046,6 +2302,24 @@ content.addEventListener('click', (e)=>{
   if(towerBtn){ openTower(towerBtn.dataset.towerView); }
   const matBtn = e.target.closest('[data-materials-tower]');
   if(matBtn){ openMaterialsTower(); }
+  const procSbuBtn = e.target.closest('[data-proc-sbu]');
+  if(procSbuBtn){
+    selectedProcSbu = procSbuBtn.dataset.procSbu;
+    const container = document.getElementById('material-pareto-container');
+    if(container) container.innerHTML = selectedProcSlice==='po' ? renderMaterialParetoSection() : renderConsumptionSection();
+  }
+  const procMoBtn = e.target.closest('[data-proc-month]');
+  if(procMoBtn){
+    selectedProcMonth = procMoBtn.dataset.procMonth;
+    const container = document.getElementById('material-pareto-container');
+    if(container) container.innerHTML = renderMaterialParetoSection();
+  }
+  const procSliceBtn = e.target.closest('[data-proc-slice]');
+  if(procSliceBtn){
+    selectedProcSlice = procSliceBtn.dataset.procSlice;
+    // Re-render the whole procurement panel so the toggle buttons themselves update style
+    if(state.view==='procurement'){ renderActivity(DATA.find(a=>a.id==='procurement')); }
+  }
 });
 
 function statusBadgeHTML(key, store, cycle, labelMap){
